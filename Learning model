@@ -1,0 +1,100 @@
+import os
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+from keras.utils.np_utils import to_categorical
+from keras.layers import Dense, Dropout, Flatten, Input
+from keras.applications.vgg16 import VGG16
+from keras.models import Model, Sequential
+from keras import optimizers
+number = 100
+
+#Create path
+path_bbslm = os.listdir('BBSlm/')
+path_rayste37 = os.listdir('Rayste37/')
+path_meisters13p = os.listdir('MeisterS13P/')
+
+img_bbslm = []
+img_rayste37 = []
+img_meisters13p = []
+
+for i in range(len(path_bbslm)):
+    img = cv2.imread('BBSlm/' + path_bbslm[i])
+    img = cv2.resize(img, (50,50))
+    img_bbslm.append(img)
+
+count = 0    
+for i in range(len(path_rayste37)):
+    img = cv2.imread('Rayste37/' + path_rayste37[i])
+    img = cv2.resize(img, (50,50))
+    img_rayste37.append(img)
+    
+    
+for i in range(len(path_meisters13p)):
+    img = cv2.imread('MeisterS13P/' + path_meisters13p[i])
+    img = cv2.resize(img, (50,50))
+    img_meisters13p.append(img)
+    
+X = np.array(img_bbslm + img_rayste37 + img_meisters13p)
+y =  np.array([0]*len(img_bbslm) + [1]*len(img_rayste37) + [2]*len(img_meisters13p))
+
+rand_index = np.random.permutation(np.arange(len(X)))
+X = X[rand_index]
+y = y[rand_index]
+
+# Data division
+X_train = X[:int(len(X)*0.8)]
+y_train = y[:int(len(y)*0.8)]
+X_test = X[int(len(X)*0.8):]
+y_test = y[int(len(y)*0.8):]
+
+y_train = to_categorical(y_train)
+y_test = to_categorical(y_test)
+
+# Use VGG
+input_tensor = Input(shape=(50, 50, 3))
+vgg16 = VGG16(include_top=False, weights='imagenet', input_tensor=input_tensor)
+
+
+top_model = Sequential()
+top_model.add(Flatten(input_shape=vgg16.output_shape[1:]))
+top_model.add(Dense(256, activation='relu'))
+top_model.add(Dropout(0.5))
+top_model.add(Dense(3, activation='softmax'))
+
+# Combine with VGG and top_model
+model = Model(input=vgg16.input, output=top_model(vgg16.output))
+
+
+for layer in model.layers[:15]:
+    layer.trainable = False
+
+
+model.compile(loss='categorical_crossentropy',
+              optimizer=optimizers.SGD(lr=1e-4, momentum=0.9),
+              metrics=['accuracy'])
+
+# Learning
+model.fit(X_train, y_train, batch_size=100, epochs=10, validation_data=(X_test, y_test))
+
+# Judge the wheel's brand
+def wheel(img):
+    img = cv2.resize(img, (50, 50))
+    pred = np.argmax(model.predict(np.array([img])))
+    if pred == 0:
+        return 'BBS_LM'
+    elif pred == 1:
+        return 'Rays_TE37'
+    else:
+        return 'Meister_S1_3P'
+
+# Provide picture
+img = cv2.imread('BBSlm/' + path_bbslm[0])
+b,g,r = cv2.split(img) 
+img = cv2.merge([r,g,b])
+plt.imshow(img)
+plt.show()
+print(wheel(img))
+
+# Save model
+model.save('wheel_model.h5')
