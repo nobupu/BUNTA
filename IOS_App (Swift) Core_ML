@@ -1,0 +1,89 @@
+// Reference URL: https://nobuhiroharada.com/2018/03/04/sample-app-using-coreml/
+
+import UIKit
+import CoreML
+import Vision
+import AVFoundation
+
+class ViewController: UIViewController, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+    
+    
+    @IBOutlet weak var imageViewObject: UIImageView!
+    
+    
+    @IBOutlet weak var textField: UITextField!
+    
+    var imagePicker:UIImagePickerController!
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        
+        imagePicker            = UIImagePickerController()
+        imagePicker.delegate   = self
+        imagePicker.sourceType = .camera
+    }
+    
+    override func didReceiveMemoryWarning() {
+        super.didReceiveMemoryWarning()
+        // Dispose of any resources that can be recreated.
+    }
+    
+    @IBAction func takePicture(_ sender: Any) {
+      present(imagePicker, animated: true, completion: nil)
+    }
+    
+    
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+        
+        imageViewObject.image = info[.originalImage] as? UIImage
+        
+        imagePicker.dismiss(animated: true, completion: nil)
+        
+        pictureIdentifyML(image: (info[UIImagePickerController.InfoKey.originalImage] as? UIImage)!)
+    }
+    
+    func pictureIdentifyML(image:UIImage) {
+        
+        
+        guard let model = try? VNCoreMLModel(for:bunta().model) else {
+            fatalError("can not load ML model")
+        }
+        
+        
+        let request = VNCoreMLRequest(model:model) {
+            [weak self] request, error in
+            guard let results = request.results as? [VNClassificationObservation], let firstResult = results.first else {
+                fatalError("can not get result from VNCoreMLResult")
+            }
+            
+            DispatchQueue.main.sync {
+                
+                self?.textField.text = "confidence = \(Int(firstResult.confidence * 100))%, \n identifier = \((firstResult.identifier))"
+                
+                
+                let utTerance   = AVSpeechUtterance(string: (self?.textField.text)!)
+                utTerance.voice = AVSpeechSynthesisVoice(language: "en-gb")
+                let synthesizer = AVSpeechSynthesizer()
+                synthesizer.speak(utTerance)
+            }
+        }
+        
+         
+        guard let ciImage = CIImage(image:image) else {
+            fatalError("can not convert to CIImage")
+        }
+        
+        
+        let imageHandler = VNImageRequestHandler(ciImage:ciImage)
+        
+        
+        DispatchQueue.global(qos: .userInteractive).async {
+            do {
+                try imageHandler.perform([request])
+            } catch {
+                print("Error \(error)")
+            }
+        }
+    }
+}
+
